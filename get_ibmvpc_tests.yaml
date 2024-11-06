@@ -1,0 +1,118 @@
+---
+- name: Gather IBM Cloud facts
+  hosts: localhost
+  tasks:
+    # - name: Retrieve resource groups information
+    #   get_ibmvpc_resource_groups:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     name: Ceph-qe
+    #   register: rg_info
+
+    # - name: Display resource groups information
+    #   debug:
+    #     var: rg_info.resource_groups
+
+    # - name: Retrieve VPCs information
+    #   get_ibmvpc_vpcs:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     #resource_group_name: Ceph-qe
+    #     name: ceph-qe-vpc
+    #   register: vpc_info
+
+    # - name: Display VPC information
+    #   debug:
+    #     var: vpc_info.vpcs
+
+    # - name: Retrieve subnet information
+    #   get_ibmvpc_subnets:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     resource_group_name: Ceph-qe
+    #     #zone_name: us-south-1
+    #     vpc_name: ceph-qe-vpc
+    #     cidr: 10.240.64.0/24
+    #   register: subnet_info
+
+    # - name: Display subnets information
+    #   debug:
+    #     var: subnet_info.subnets
+
+    # - name: Retrieve images information
+    #   get_ibmvpc_images:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     resource_group_name: Ceph-qe
+    #     #name: rhelai-11-image
+    #   register: images_info
+
+    # - name: Display images information
+    #   debug:
+    #     var: images_info.images
+
+    # - name: Retrieve ssh keys information
+    #   get_ibmvpc_sshkeys:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     name: ceph-qe-jenkins
+    #   register: sshkeys_info
+
+    # - name: Display ssh keys information
+    #   debug:
+    #     var: sshkeys_info.sshkeys
+
+    # - name: Retrieve instance profiles information
+    #   get_ibmvpc_instance_profiles:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #   register: profiles_info
+
+    # - name: Display instance profiles information
+    #   debug:
+    #     var: profiles_info.instance_profiles
+
+    # - name: Retrieve security groups information
+    #   get_ibmvpc_security_groups:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     name: flick-outgoing-rejoicing-broadways
+    #   register: groups_info
+
+    # - name: Display security groups information
+    #   debug:
+    #     var: groups_info.security_groups
+
+    # - name: Retrieve dns zones information
+    #   get_ibmvpc_dnszones:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     name: dall.qe.ceph.local
+    #   register: zones_info
+
+    # - name: Display dns zones information
+    #   debug:
+    #     var: zones_info.dns_zones
+
+    # - name: Retrieve resource record information
+    #   get_ibmvpc_resource_records:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     zone_name: dall.qe.ceph.local
+    #   register: record_info
+
+    # - name: Display resource records information
+    #   debug:
+    #     var: record_info.resource_records
+
+    # - name: Retrieve server instances information
+    #   get_ibmvpc_server_instances:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     name: neerali-jump-vm
+    #   register: instances_info
+
+    # - name: Display server instance information
+    #   debug:
+    #     var: instances_info.server_instances
+
+    - name: Retrieve volumes information
+      get_ibmvpc_volumes:
+        access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+        #state: attached
+        #zone_name: us-south-2
+      register: volumes_info
+
+    - name: Display volumes information
+      debug:
+        var: volumes_info.volumes

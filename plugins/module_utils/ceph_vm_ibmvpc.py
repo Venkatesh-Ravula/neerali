@@ -4,6 +4,8 @@
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
+import os
+import re
 import socket
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -19,10 +21,31 @@ from ibm_cloud_networking_services.dns_svcs_v1 import (
     ResourceRecordInputRdataRdataPtrRecord,
 )
 from requests.exceptions import ReadTimeout
-from utility.retry import retry
-from utility.log import Log
+from retry import retry
+import logging
 
-LOG = Log(__name__)
+logger = logging.getLogger(__name__)
+
+
+def get_logger(mod_name):
+    """
+    To activate logs, setup the environment var LOGFILE
+    e.g.: export LOGFILE=/tmp/ansible-ibmvpc.log
+    Args:
+        mod_name: module name
+    Returns: Logger instance
+    """
+
+    logger = logging.getLogger(os.path.basename(mod_name))
+    global LOGFILE
+    LOGFILE = os.environ.get('LOGFILE')
+    if not LOGFILE:
+        logger.addHandler(logging.NullHandler())
+    else:
+        logging.basicConfig(level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M:%S',
+                            format='%(asctime)s %(levelname)s %(name)s %(message)s',
+                            filename=LOGFILE, filemode='a')
+    return logger
 
 def get_resource_id(resource_name: str, response: Dict) -> str:
     """
@@ -38,7 +61,10 @@ def get_resource_id(resource_name: str, response: Dict) -> str:
     Raises:
         ResourceNotFound    when there is a failure to retrieve the ID.
     """
-    return get_resource_details(resource_name, response)["id"]
+    resource_id = get_resource_details(resource_name, response).get("id")
+
+    if not resource_id:
+        raise ResourceNotFound(f"Failed to retrieve the ID of {resource_name}.")
 
 
 def get_resource_details(resource_name: str, response: Dict) -> Dict:
@@ -50,7 +76,7 @@ def get_resource_details(resource_name: str, response: Dict) -> Dict:
         response (Dict):        DetailedResponse returned from the collections.
 
     Returns:
-        Resource id (str)
+        Resource details (dict)
 
     Raises:
         ResourceNotFound    when there is a failure to retrieve the ID.
@@ -61,48 +87,7 @@ def get_resource_details(resource_name: str, response: Dict) -> Dict:
     for i in response[resource_list_name]:
         if i["name"] == resource_name:
             return i
-
-    raise ResourceNotFound(f"Failed to retrieve the ID of {resource_name}.")
-
-
-def get_dns_zone_id(zone_name: str, response: Any) -> str:
-    """
-    Retrieve the DNS Zone ID for the provided zone name using the provided response.
-
-    Args:
-        zone_name (str):    DNS Zone whose ID needs to be retrieved.
-        response (Dict):    Response returned from the collection.
-
-    Returns:
-        DNS Zone ID (str)
-
-    Raises:
-        ResourceNotFound    when there is a failure to retrieve the given zone ID.
-    """
-    for i in response["dnszones"]:
-        if i["name"] == zone_name:
-            return i["id"]
-    raise ResourceNotFound(f"Failed to retrieve the ID of {zone_name}.")
-
-
-def get_dns_zone_instance_id(zone_name: str, response: Any) -> str:
-    """
-    Retrieve the DNS Zone Instance ID for the provided zone name using the provided response.
-
-    Args:
-        zone_name (str):    DNS Zone whose ID needs to be retrieved.
-        response (Dict):    Response returned from the collection.
-
-    Returns:
-        DNS Zone Instance ID (str)
-
-    Raises:
-        ResourceNotFound    when there is a failure to retrieve the given zone ID.
-    """
-    for i in response["dnszones"]:
-        if i["name"] == zone_name:
-            return i["instance_id"]
-    raise ResourceNotFound(f"Failed to retrieve the ID of {zone_name}.")
+    return {}
 
 
 class CephVMNodeIBMVPC:
@@ -114,7 +99,8 @@ class CephVMNodeIBMVPC:
     def __init__(
         self,
         access_key: str,
-        service_url: str,
+        service_url: Optional[str] = "https://us-south.iaas.cloud.ibm.com/v1",
+        dns_service_url: Optional[str] = "https://api.dns-svcs.cloud.ibm.com/v1",
         vsi_id: Optional[str] = None,
         node: Optional[Dict] = None
     ) -> None:
@@ -123,18 +109,22 @@ class CephVMNodeIBMVPC:
 
         :param access_key: The API access key for IBM Cloud.
         :param service_url: The URL endpoint for IBM Cloud VPC service.
+        :param dns_service_url: The URL endpoint for IBM Cloud dns service.
         :param vsi_id: The virtual server instance (VSI) ID.
+        :param node: Node dictionary.
         """
-        # CephVM attributes
         self._subnet: str = ""
         self._roles: list = list()
         self.node = None
+        self._dns_service_instance_id = "b7efc2ce-ebf7-4dca-b7cf-b328171229a5"
 
         authenticator = IAMAuthenticator(access_key)
         self.vpc_service = VpcV1(authenticator=authenticator)
-        self.vpc_service.set_service_url(service_url)
+        if service_url:
+            self.vpc_service.set_service_url(service_url=service_url)
         self.dnssvc = DnsSvcsV1(authenticator=authenticator)
-        self.dnssvc.set_service_url(service_url=service_url)
+        if dns_service_url:
+            self.dnssvc.set_service_url(service_url=dns_service_url)
 
         if vsi_id:
             self.node = self.vpc_service.get_instance(id=vsi_id).get_result()
@@ -142,12 +132,327 @@ class CephVMNodeIBMVPC:
         if node:
             self.node = node
 
-    # properties
+    def get_resource_groups(self, resource_group_name=None) -> None:
+        """
+        Retrieve resource groups information in the region.
 
-    @property
-    def ip_address(self) -> str:
-        """Return the private IP address of the node."""
-        return self.node["primary_network_interface"]["primary_ipv4_address"]
+        Args:
+          resource_group_name: Name of resource group
+
+        :return: Dictionary of resource group name and its ID.
+        """
+        vpcs_response = self.vpc_service.list_vpcs().get_result().get("vpcs", [])
+        resource_groups_info = {}
+        for each_vpc in vpcs_response:
+            resource_groups_info.update({
+                each_vpc["resource_group"]["name"]: each_vpc["resource_group"]["id"]
+            })
+        if resource_group_name:
+            return resource_groups_info.get(resource_group_name)
+        else:
+            return resource_groups_info
+
+    def get_vpcs(self, resource_group_name=None, resource_group_id=None, vpc_name=None) -> None:
+        """
+        Retrieve VPCs information in the region.
+
+        Args:
+          resource_group_name: Name of resource group to fetch the vpcs associated with it within the region
+          resource_group_id: ID of resource group to fetch the vpcs associated with it within the region
+          vpc_name: Name of VPC
+
+        :return: List of VPCs, each as a dictionary.
+        """
+        try:
+            if resource_group_name and not resource_group_id:
+                resource_group_id = self.get_resource_groups(resource_group_name)
+
+            response = self.vpc_service.list_vpcs(resource_group_id=resource_group_id).get_result()
+            if vpc_name:
+                vpc_response = get_resource_details(vpc_name, response)
+                vpc_info = {
+                    key: vpc_response[key] for key in ["name", "id", "classic_access", "cse_source_ips", "dns"]
+                }
+                for attribute in ["default_network_acl", "default_routing_table", "default_security_group", "resource_group"]:
+                    vpc_info.update({
+                        attribute: {key: vpc_response[attribute][key] for key in ["name", "id"]}
+                    })
+                return vpc_info
+            else:
+                vpcs_info = []
+                vpcs = response.get("vpcs", [])
+
+                for vpc_item in vpcs:
+                    vpc_info = {
+                        key: vpc_item[key] for key in ["name", "id", "classic_access", "cse_source_ips", "dns"]
+                    }
+                    for attribute in ["default_network_acl", "default_routing_table", "default_security_group", "resource_group"]:
+                        vpc_info.update({
+                            attribute: {key: vpc_item[attribute][key] for key in ["name", "id"]}
+                        })
+                    vpcs_info.append(vpc_info)
+                return vpcs_info
+        except Exception as e:
+            raise Exception(f"Failed to retrieve VPCs: {e}")
+
+    def get_subnets(self, resource_group_name=None, resource_group_id=None, zone_name=None, vpc_name=None, cidr=None) -> None:
+        """
+        Retrieve all subnets information in the region.
+
+        Args:
+          resource_group_name: Name of resource group to fetch the subnets associated with it within the region
+          resource_group_id: ID of resource group to fetch the subnets associated with it within the region
+          zone_name: Name of the zone to filter the subnets associated with it
+          vpc_name: Name of VPC
+          cidr: Filter subnet info based on cidr
+
+        :return: List of subnets, each as a dictionary.
+        """
+        try:
+            if resource_group_name and not resource_group_id:
+                resource_group_id = self.get_resource_groups(resource_group_name)
+
+            response = self.vpc_service.list_subnets(resource_group_id=resource_group_id, zone_name=zone_name, vpc_name=vpc_name).get_result()
+            subnets = response.get("subnets", [])
+            subnets_info = []
+            for subnet_item in subnets:
+                subnet_info = {
+                    key: subnet_item[key] for key in ["name", "id", "ipv4_cidr_block", "available_ipv4_address_count"]
+                }
+                if cidr:
+                    if subnet_info["ipv4_cidr_block"] == cidr:
+                        subnets_info.append(subnet_info)
+                else:
+                    subnets_info.append(subnet_info)
+            return subnets_info
+        except Exception as e:
+            raise Exception(f"Failed to retrieve subnets: {e}")
+
+    def get_images(self, resource_group_name=None, resource_group_id=None, image_name=None) -> None:
+        """
+        Retrieve the images information.
+
+        Args:
+          resource_group_name: Name of resource group to fetch the images within the region
+          resource_group_id: ID of resource group to fetch the images within the region
+          image_name: Name of the image
+
+        :return: Dictionary of images.
+        """
+        try:
+            if resource_group_name and not resource_group_id:
+                resource_group_id = self.get_resource_groups(resource_group_name)
+
+            images = self.vpc_service.list_images(resource_group_id=resource_group_id, name=image_name).get_result().get("images", [])
+            images_info = {image["name"]: image["id"] for image in images}
+            if image_name:
+                return images_info.get(image_name)
+            return images_info
+        except Exception as e:
+            raise Exception(f"Failed to retrieve images: {e}")
+
+    def get_sshkeys(self, resource_group_name=None, resource_group_id=None, key_name=None) -> None:
+        """
+        Retrieve the ssh keys information.
+
+        Args:
+          resource_group_name: Name of resource group to fetch the ssh keys associated with it
+          resource_group_id: ID of resource group to fetch the ssh keys associated with it
+          key_name: Name of the ssh key to filter the ssh keys
+
+        :return: List of ssh keys, each as a dictionary.
+        """
+        try:
+            if resource_group_name and not resource_group_id:
+                resource_group_id = self.get_resource_groups(resource_group_name)
+
+            ssh_keys = self.vpc_service.list_keys().get_result().get("keys", [])
+            if resource_group_id:
+                ssh_keys = [item for item in ssh_keys if item["resource_group"]["id"] == resource_group_id]
+            sshkeys_info = []
+            for sshkey_item in ssh_keys:
+                sshkey_info = {
+                    key: sshkey_item[key] for key in ["name", "id", "fingerprint", "public_key"]
+                }
+                sshkeys_info.append(sshkey_info)
+            if key_name:
+                return next((item for item in sshkeys_info if item["name"] == key_name), {})
+            return sshkeys_info
+        except Exception as e:
+            raise Exception(f"Failed to retrieve ssh keys: {e}")
+
+    def get_instance_profiles(self) -> List:
+        """
+        Retrieve the instance profiles information.
+
+        Args:
+          profile_name: Name of the instance profile
+
+        :return: List of instance profiles.
+        """
+        try:
+            profiles = self.vpc_service.list_instance_profiles().get_result().get("profiles", [])
+            return [profile["name"] for profile in profiles]
+        except Exception as e:
+            raise Exception(f"Failed to retrieve instance profiles: {e}")
+
+    def get_security_groups(self, resource_group_name=None, resource_group_id=None, vpc_name=None, group_name=None) -> None:
+        """
+        Retrieve the security groups information.
+
+        Args:
+          resource_group_name: Name of resource group to fetch the security groups associated with it within the region
+          resource_group_id: ID of resource group to fetch the security groups associated with it within the region
+          vpc_name: Name of VPC
+          group_name: Name of the security group
+
+        :return: Dictionary of security groups.
+        """
+        try:
+            if resource_group_name and not resource_group_id:
+                resource_group_id = self.get_resource_groups(resource_group_name)
+
+            groups = self.vpc_service.list_security_groups(resource_group_id=resource_group_id, vpc_name=vpc_name).get_result().get("security_groups", [])
+            groups_info = {item["name"]: item["id"] for item in groups}
+            if group_name:
+                return groups_info.get(group_name)
+            return groups_info
+        except Exception as e:
+            raise Exception(f"Failed to retrieve security groups: {e}")
+
+    def get_server_instances(self, resource_group_name=None, resource_group_id=None, vpc_name=None, instance_name=None) -> None:
+        """
+        Retrieve the virtual server instances information.
+
+        Args:
+          resource_group_name: Name of resource group to fetch the server instances associated with it within the region
+          resource_group_id: ID of resource group to fetch the server instances associated with it within the region
+          vpc_name: Name of VPC
+          instance_name: Name of the server instance
+
+        :return: List of dictionary of server instances
+        """
+        try:
+            if resource_group_name and not resource_group_id:
+                resource_group_id = self.get_resource_groups(resource_group_name)
+
+            instances = self.vpc_service.list_instances(resource_group_id=resource_group_id, vpc_name=vpc_name, name=instance_name).get_result().get("instances", [])
+            instances_info = []
+            for vsi in instances:
+                instance_info = {
+                    "name": vsi["name"],
+                    "id": vsi["id"],
+                    "ip_address": vsi["primary_network_interface"]["primary_ip"]["address"],
+                    "profile": vsi["profile"]["name"],
+                    "zone": vsi["zone"]["name"],
+                    "volumes": self.get_instance_volumes(vsi["id"])
+                }
+                for attribute in ["image", "primary_network_interface", "resource_group", "vpc"]:
+                    instance_info[attribute] = vsi[attribute]["name"]
+
+                instances_info.append(instance_info)
+            if instance_name and len(instances_info) == 1:
+                return instances_info[0]
+            return instances_info
+        except Exception as e:
+            raise Exception(f"Failed to retrieve server instances: {e}")
+
+    def get_instance_volumes(self, vsi_id) -> list:
+        """
+        Retrieve volume information associated with the instance.
+
+        Args:
+          vsi_id: ID of VSI instance
+
+        :return: List of attached volumes, each as a dictionary.
+        """
+        try:
+            volumes_info = []
+            response = self.vpc_service.list_instance_volume_attachments(vsi_id)
+            volume_attachments = response.get_result().get("volume_attachments", [])
+
+            for attachment in volume_attachments:
+                volume_info = {
+                    "name": attachment["volume"]["name"],
+                    "id": attachment["volume"]["id"],
+                    "type": attachment["type"],
+                    "delete_with_instance": attachment["delete_volume_on_instance_delete"]
+                }
+                volumes_info.append(volume_info)
+
+            return volumes_info
+        except ApiException as e:
+            raise ApiException(f"Failed to retrieve volumes: {e}")
+
+    def get_volumes(self, volume_name=None, zone_name=None, state=None) -> None:
+        """
+        Retrieve the volumes information.
+
+        Args:
+          volume_name: Name of the volume
+          zone_name: Filter the volumes associated with the zone
+          state: Filter volumes by attachment state
+
+        :return: List of dictionary of volumes
+        """
+        try:
+            volumes = self.vpc_service.list_volumes(name=volume_name, zone_name=zone_name, attachment_state=state).get_result().get("volumes", [])
+            volumes_info = []
+            for vol in volumes:
+                vol_info = {
+                    key: vol[key] for key in ["name", "id", "status", "active", "capacity", "attachment_state"]
+                }
+                vol_info["zone"] = vol["zone"]["name"]
+                volumes_info.append(vol_info)
+            if volume_name and len(volumes_info) == 1:
+                return volumes_info[0]
+            return volumes_info
+        except Exception as e:
+            raise Exception(f"Failed to retrieve volumes: {e}")
+
+    def get_dnszones(self, instance_id=None, zone_name=None) -> None:
+        """
+        Retrieve the dns zones information.
+
+        Args:
+          instance_id: ID of dns service instance
+          zone_name: Name of the dns zone
+
+        :return: Dictionary of dns zones.
+        """
+        try:
+            if not instance_id:
+                instance_id = self._dns_service_instance_id
+            zones = self.dnssvc.list_dnszones(instance_id=instance_id).get_result().get("dnszones", [])
+            zones_info = {item["name"]: item["id"] for item in zones}
+            if zone_name:
+                return zones_info.get(zone_name)
+            return zones_info
+        except Exception as e:
+            raise Exception(f"Failed to retrieve dns zones: {e}")
+
+    def get_resource_records(self, zone_name=None, instance_id=None, record_name=None) -> None:
+        """
+        Retrieve the resource records information.
+
+        Args:
+          zone_name: Name of the dns zone
+          instance_id: ID of dns service instance
+          record_name: Name of the resource record
+
+        :return: List of dictionary of resource records.
+        """
+        try:
+            if not instance_id:
+                instance_id = self._dns_service_instance_id
+            zone_id = self.get_dnszones(instance_id=instance_id, zone_name=zone_name)
+            resource_records = self.dnssvc.list_resource_records(instance_id=instance_id, dnszone_id=zone_id).get_result().get("resource_records", [])
+            records_info = {item["name"]: item["id"] for item in resource_records}
+            if record_name:
+                return records_info.get(record_name)
+            return resource_records
+        except Exception as e:
+            raise Exception(f"Failed to retrieve resource records: {e}")
 
     @property
     def floating_ips(self) -> List[str]:
@@ -199,65 +504,6 @@ class CephVMNodeIBMVPC:
         return self.node["name"]
 
     @property
-    def volumes(self) -> list:
-        """
-        Retrieve volume information associated with the instance.
-
-        :return: List of attached volumes, each as a dictionary.
-        """
-        try:
-            volumes_info = []
-            response = self.vpc_service.list_instance_volume_attachments(self.vsi_id)
-            volume_attachments = response.get_result().get("volume_attachments", [])
-
-            for attachment in volume_attachments:
-                volume_info = {
-                    "volume_id": attachment["volume"]["id"],
-                    "volume_name": attachment["volume"]["name"],
-                    "volume_size": attachment["volume"]["capacity"],
-                    "attachment_id": attachment["id"],
-                    "status": attachment["status"]
-                }
-                volumes_info.append(volume_info)
-
-            return volumes_info
-        except ApiException as e:
-            raise ApiException(f"Failed to retrieve volumes: {e}")
-
-    @property
-    @retry(ReadTimeout, tries=5, delay=15)
-    def subnet(self) -> str:
-        """Return the subnet information."""
-        if self._subnet:
-            return self._subnet
-
-        subnet_details = self.vpc_service.get_subnet(
-            self.node["primary_network_interface"]["subnet"]["id"]
-        )
-
-        return subnet_details.get_result()["ipv4_cidr_block"]
-
-    @property
-    def shortname(self) -> str:
-        """Return the short form of the hostname."""
-        return self.hostname.split(".")[0]
-
-    @property
-    def no_of_volumes(self) -> int:
-        """Return the number of volumes attached to the VM."""
-        return len(self.volumes)
-
-    @property
-    def role(self) -> List:
-        """Return the Ceph roles of the instance."""
-        return self._roles
-
-    @role.setter
-    def role(self, roles: list) -> None:
-        """Set the roles for the VM."""
-        self._roles = deepcopy(roles)
-
-    @property
     def node_type(self) -> str:
         """Return the provider type."""
         return "ibmc"
@@ -296,7 +542,7 @@ class CephVMNodeIBMVPC:
             userdata            user related data
 
         """
-        LOG.info(f"Starting to create VM with name {node_name}")
+        logger.info(f"Starting to create VM with name {node_name}")
         try:
             # Construct a dict representation of a VPCIdentityById model
             vpcs = self.service.list_vpcs()
@@ -400,7 +646,7 @@ class CephVMNodeIBMVPC:
             self.node = response.get_result()
 
             # DNS record creation phase
-            LOG.debug(f"Adding DNS records for {node_name}")
+            logger.debug(f"Adding DNS records for {node_name}")
             dns_zone = self.dns_service.list_dnszones(
                 "b7efc2ce-ebf7-4dca-b7cf-b328171229a5"
             )
@@ -455,7 +701,7 @@ class CephVMNodeIBMVPC:
         except NodeError:
             raise
         except BaseException as be:  # noqa
-            LOG.error(be, exc_info=True)
+            logger.error(be)
             raise NodeError(f"Unknown error. Failed to create VM with name {node_name}")
 
     def delete(self, zone_name: Optional[str] = None) -> None:
@@ -474,13 +720,14 @@ class CephVMNodeIBMVPC:
         try:
             self.remove_dns_records(zone_name)
         except BaseException:  # noqa
-            LOG.warning(f"Encountered an error in removing DNS records of {node_name}")
+            logger.warning(f"Encountered an error in removing DNS records of {node_name}")
+            pass
 
-        LOG.info(f"Preparing to remove {node_name}")
+        logger.info(f"Preparing to remove {node_name}")
         resp = self.service.delete_instance(node_id)
 
         if resp.get_status_code() != 204:
-            LOG.debug(f"{node_name} cannot be found.")
+            logger.debug(f"{node_name} cannot be found.")
             return
 
         # Wait for the VM to be delete
@@ -490,14 +737,14 @@ class CephVMNodeIBMVPC:
             try:
                 resp = self.service.get_instance(node_id)
                 if resp.get_status_code == 404:
-                    LOG.info(f"Successfully removed {node_name}")
+                    logger.info(f"Successfully removed {node_name}")
                     return
             except ApiException:
-                LOG.info(f"Successfully removed {node_name}")
+                logger.info(f"Successfully removed {node_name}")
                 self.remove_dns_records(zone_name)
                 return
 
-        LOG.debug(resp.get_result())
+        logger.debug(resp.get_result())
         raise NodeDeleteFailure(f"Failed to remove {node_name}")
 
     def wait_until_vm_state_running(self, instance_id: str) -> None:
@@ -521,7 +768,7 @@ class CephVMNodeIBMVPC:
             sleep(5)
             resp = self.service.get_instance(instance_id)
             if resp.get_status_code() != 200:
-                LOG.debug("Encountered an error getting the instance.")
+                logger.debug("Encountered an error getting the instance.")
                 sleep(5)
                 continue
 
@@ -529,7 +776,7 @@ class CephVMNodeIBMVPC:
             if node_details["status"] == "running":
                 end_time = datetime.now()
                 duration = (end_time - start_time).total_seconds()
-                LOG.info(
+                logger.info(
                     "%s moved to running state in %d seconds.",
                     node_details["name"],
                     int(duration),
@@ -566,7 +813,7 @@ class CephVMNodeIBMVPC:
         for record in records["resource_records"]:
             if record["type"] == "A" and self.node.get("name") in record["name"]:
                 if record.get("linked_ptr_record"):
-                    LOG.info(
+                    logger.info(
                         f"Deleting PTR record {record['linked_ptr_record']['name']}"
                     )
                     self.dns_service.delete_resource_record(
@@ -575,7 +822,7 @@ class CephVMNodeIBMVPC:
                         record_id=record["linked_ptr_record"]["id"],
                     )
 
-                LOG.info(f"Deleting Address record {record['name']}")
+                logger.info(f"Deleting Address record {record['name']}")
                 self.dns_service.delete_resource_record(
                     instance_id="b7efc2ce-ebf7-4dca-b7cf-b328171229a5",
                     dnszone_id=zone_id,
@@ -586,7 +833,7 @@ class CephVMNodeIBMVPC:
 
         # This code path can happen if there are no matching/associated DNS records
         # Or we have a problem
-        LOG.debug(f"No matching DNS records found for {self.node['name']}")
+        logger.debug(f"No matching DNS records found for {self.node['name']}")
 
 
 class ResourceNotFound(Exception):
