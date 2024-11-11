@@ -16,4 +16,4 @@ echo "Installing neerali's python prerequisites..."
 ${VIRTUAL_ENV}/bin/python -m pip install -r requirements.txt --upgrade
 
 echo "Install neerali's ansible requirements..."
-${VIRTUAL_ENV}/bin/ansible-galaxy collection install .
+${VIRTUAL_ENV}/bin/ansible-galaxy collection install -r requirements.yaml
