@@ -12,6 +12,8 @@ module: get_ibmvpc_sshkeys
 short_description: Retrieve IBM Cloud ssh keys information.
 description:
   - This module retrieves and returns ssh keys on IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:

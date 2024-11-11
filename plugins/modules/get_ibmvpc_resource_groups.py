@@ -12,6 +12,8 @@ module: get_ibmvpc_resource_groups
 short_description: Retrieve IBM Cloud resource groups information.
 description:
   - This module retrieves and returns resource groups of IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:

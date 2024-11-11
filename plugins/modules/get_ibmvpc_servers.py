@@ -8,10 +8,12 @@ from ansible_collections.neerali.general.plugins.module_utils.ceph_vm_ibmvpc imp
 
 DOCUMENTATION = '''
 ---
-module: get_ibmvpc_server_instances
-short_description: Retrieve IBM Cloud server_instances information.
+module: get_ibmvpc_servers
+short_description: Retrieve IBM Cloud servers information.
 description:
-  - This module retrieves and returns server_instances of IBM cloud.
+  - This module retrieves and returns servers of IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:
@@ -40,15 +42,15 @@ options:
     type: str
   name:
     description:
-      - Name of server instance
+      - Name of server
     required: false
     type: str
 '''
 
 EXAMPLES = '''
-# Retrieve server instances information
-- name: Get server instances from IBM Cloud
-  get_ibmvpc_server_instances:
+# Retrieve servers information
+- name: Get servers from IBM Cloud
+  get_ibmvpc_servers:
     access_key: "your_ibm_access_key"
     service_url: "https://us-south.iaas.cloud.ibm.com/v1"
     resource_group_name: "abccsede-sdds"
@@ -58,8 +60,8 @@ EXAMPLES = '''
 '''
 
 RETURN = '''
-server_instances:
-    description: List of server_instances in the IBM Cloud.
+servers:
+    description: List of servers in the IBM Cloud.
     type: list
     elements: dict
     returned: always
@@ -98,14 +100,14 @@ def run_module():
 
     # Gather vsi information
     try:
-        server_instances = vm_node.get_server_instances(resource_group_name=resource_group_name, resource_group_id=resource_group_id, vpc_name=vpc_name, instance_name=name)
+        servers = vm_node.get_server_instances(resource_group_name=resource_group_name, resource_group_id=resource_group_id, vpc_name=vpc_name, instance_name=name)
         result = dict(
             changed=False,
-            server_instances=server_instances
+            servers=servers
         )
         module.exit_json(**result)
     except ApiException as e:
-        module.fail_json(msg=f"Failed to retrieve server instance information: {str(e)}")
+        module.fail_json(msg=f"Failed to retrieve server information: {str(e)}")
 
 def main():
     run_module()

@@ -12,6 +12,8 @@ module: get_ibmvpc_subnets
 short_description: Retrieve IBM Cloud subnets information.
 description:
   - This module retrieves and returns subnets of IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:
@@ -43,9 +45,9 @@ options:
       - Name of VPC.
     required: false
     type: str
-  cidr:
+  name:
     description:
-      - Filter subnet based on CIDR.
+      - Name of the network
     required: false
     type: str
 '''
@@ -59,7 +61,7 @@ EXAMPLES = '''
     resource_group_name: "abccsede-sdds"
     zone_name: "us-south-1"
     vpc_name: "vpc-name"
-    cidr: "10.64.0.0/24"
+    name: "sn-00567"
   register: result
 '''
 
@@ -80,7 +82,7 @@ def run_module():
         resource_group_id=dict(type='str', required=False),
         zone_name=dict(type='str', required=False),
         vpc_name=dict(type='str', required=False),
-        cidr=dict(type='str', required=False)
+        name=dict(type='str', required=False)
     )
 
     # Initialize the module
@@ -96,7 +98,7 @@ def run_module():
     resource_group_id = module.params['resource_group_id']
     zone_name = module.params['zone_name']
     vpc_name = module.params['vpc_name']
-    cidr = module.params['cidr']
+    name = module.params['name']
 
     # Initialize the IBM Cloud VPC instance handler
     try:
@@ -106,7 +108,7 @@ def run_module():
 
     # Gather subnet information
     try:
-        subnets = vm_node.get_subnets(resource_group_name=resource_group_name, resource_group_id=resource_group_id, zone_name=zone_name, vpc_name=vpc_name, cidr=cidr)
+        subnets = vm_node.get_subnets(resource_group_name=resource_group_name, resource_group_id=resource_group_id, zone_name=zone_name, vpc_name=vpc_name, network_name=name)
         result = dict(
             changed=False,
             subnets=subnets

@@ -12,6 +12,8 @@ module: get_ibmvpc_images
 short_description: Retrieve IBM Cloud images information.
 description:
   - This module retrieves and returns images on IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:

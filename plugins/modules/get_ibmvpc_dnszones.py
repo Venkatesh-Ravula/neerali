@@ -12,6 +12,8 @@ module: get_ibmvpc_dnszones
 short_description: Retrieve IBM Cloud dns zones information.
 description:
   - This module retrieves and returns dns zones on IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:

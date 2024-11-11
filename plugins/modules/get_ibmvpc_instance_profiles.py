@@ -12,6 +12,8 @@ module: get_ibmvpc_instance_profiles
 short_description: Retrieve IBM Cloud instance profiles information.
 description:
   - This module retrieves and returns instance profiles on IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:

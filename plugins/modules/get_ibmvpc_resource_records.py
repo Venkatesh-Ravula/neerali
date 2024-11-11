@@ -12,6 +12,8 @@ module: get_ibmvpc_resource_records
 short_description: Retrieve IBM Cloud resource records information.
 description:
   - This module retrieves and returns resource records on IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:
@@ -33,9 +35,9 @@ options:
       - Name of dns zone
     required: true
     type: str
-  name:
+  record_ip:
     description:
-      - Name of resource record.
+      - ip address of resource record.
     required: false
     type: str
 '''
@@ -46,7 +48,7 @@ EXAMPLES = '''
   get_ibmvpc_resource_records:
     access_key: "your_ibm_access_key"
     zone_name: "zesty-spinach"
-    name: "record1"
+    record_ip: "10.0.64.222"
   register: result
 '''
 
@@ -65,7 +67,7 @@ def run_module():
         dns_service_url=dict(type='str', required=False),
         instance_id=dict(type='str', required=False),
         zone_name=dict(type='str', required=True),
-        name=dict(type='str', required=False)
+        record_ip=dict(type='str', required=False)
     )
 
     # Initialize the module
@@ -79,7 +81,7 @@ def run_module():
     dns_service_url = module.params['dns_service_url']
     instance_id = module.params['instance_id']
     zone_name = module.params['zone_name']
-    name = module.params['name']
+    record_ip = module.params['record_ip']
 
     # Initialize the IBM Cloud dns service
     try:
@@ -89,7 +91,7 @@ def run_module():
 
     # Gather resource records information
     try:
-        resource_records = vm_node.get_resource_records(zone_name=zone_name, instance_id=instance_id, record_name=name)
+        resource_records = vm_node.get_resource_records(zone_name=zone_name, instance_id=instance_id, record_ip=record_ip)
         result = dict(
             changed=False,
             resource_records=resource_records

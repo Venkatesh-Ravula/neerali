@@ -1,118 +1,45 @@
 ---
-- name: Gather IBM Cloud facts
+- name: Create IBM Cloud servers
   hosts: localhost
   tasks:
-    # - name: Retrieve resource groups information
-    #   get_ibmvpc_resource_groups:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     name: Ceph-qe
-    #   register: rg_info
-
-    # - name: Display resource groups information
-    #   debug:
-    #     var: rg_info.resource_groups
-
-    # - name: Retrieve VPCs information
-    #   get_ibmvpc_vpcs:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     #resource_group_name: Ceph-qe
-    #     name: ceph-qe-vpc
-    #   register: vpc_info
-
-    # - name: Display VPC information
-    #   debug:
-    #     var: vpc_info.vpcs
-
-    # - name: Retrieve subnet information
-    #   get_ibmvpc_subnets:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     resource_group_name: Ceph-qe
-    #     #zone_name: us-south-1
-    #     vpc_name: ceph-qe-vpc
-    #     cidr: 10.240.64.0/24
-    #   register: subnet_info
-
-    # - name: Display subnets information
-    #   debug:
-    #     var: subnet_info.subnets
-
-    # - name: Retrieve images information
-    #   get_ibmvpc_images:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     resource_group_name: Ceph-qe
-    #     #name: rhelai-11-image
-    #   register: images_info
-
-    # - name: Display images information
-    #   debug:
-    #     var: images_info.images
-
-    # - name: Retrieve ssh keys information
-    #   get_ibmvpc_sshkeys:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     name: ceph-qe-jenkins
-    #   register: sshkeys_info
-
-    # - name: Display ssh keys information
-    #   debug:
-    #     var: sshkeys_info.sshkeys
-
-    # - name: Retrieve instance profiles information
-    #   get_ibmvpc_instance_profiles:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #   register: profiles_info
-
-    # - name: Display instance profiles information
-    #   debug:
-    #     var: profiles_info.instance_profiles
-
-    # - name: Retrieve security groups information
-    #   get_ibmvpc_security_groups:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     name: flick-outgoing-rejoicing-broadways
-    #   register: groups_info
-
-    # - name: Display security groups information
-    #   debug:
-    #     var: groups_info.security_groups
-
-    # - name: Retrieve dns zones information
-    #   get_ibmvpc_dnszones:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     name: dall.qe.ceph.local
-    #   register: zones_info
-
-    # - name: Display dns zones information
-    #   debug:
-    #     var: zones_info.dns_zones
-
-    # - name: Retrieve resource record information
-    #   get_ibmvpc_resource_records:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     zone_name: dall.qe.ceph.local
-    #   register: record_info
-
-    # - name: Display resource records information
-    #   debug:
-    #     var: record_info.resource_records
-
-    # - name: Retrieve server instances information
-    #   get_ibmvpc_server_instances:
-    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-    #     name: neerali-jump-vm
-    #   register: instances_info
-
-    # - name: Display server instance information
-    #   debug:
-    #     var: instances_info.server_instances
-
-    - name: Retrieve volumes information
-      get_ibmvpc_volumes:
+    - name: Create server instance
+      neerali.general.ibmvpc_server:
         access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
-        #state: attached
-        #zone_name: us-south-2
-      register: volumes_info
+        state: present
+        name: "neerali-ibmc-test-server-{{ item }}"
+        image: ibm-redhat-9-4-minimal-amd64-1
+        network: sn-20240306-02
+        ssh_keys:
+          - venkat-public-key
+          - ceph-qe-jenkins
+        vpc: ceph-qe-vpc
+        profile: bx2-2x8
+        security_group: flick-outgoing-rejoicing-broadways
+        zone: us-south-2
+        dns_zone: dall.qe.ceph.local
+        resource_group: Ceph-qe
+        volume_size: 30
+        volume_count: 2
+        user_data: "{{ neerali_systems_layout['cloud_init'] }}"
+      async: 600
+      poll: 0
+      register: _neerali_ibmc_async_servers
+      loop: "{{ range(1, 5) | list }}"
 
-    - name: Display volumes information
-      debug:
-        var: volumes_info.volumes
+    - name: Wait for all computes to be created
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: _neerali_ibmc_systems
+      until: _neerali_ibmc_systems.finished
+      retries: 60
+      delay: 10
+      loop: "{{ _neerali_ibmc_async_servers.results }}"
+      loop_control:
+        label: "{{ item.ansible_job_id }}"
+
+    # - name: Delete server instance
+    #   ibmvpc_server:
+    #     access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
+    #     state: absent
+    #     name: "neerali-ibmc-test-server-{{ item }}"
+    #   loop: "{{ range(1, 5) | list }}"

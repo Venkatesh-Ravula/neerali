@@ -12,6 +12,8 @@ module: get_ibmvpc_volumes
 short_description: Retrieve IBM Cloud volumes information.
 description:
   - This module retrieves and returns volumes of IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:

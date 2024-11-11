@@ -12,6 +12,8 @@ module: get_ibmvpc_vpcs
 short_description: Retrieve IBM Cloud VPCs information.
 description:
   - This module retrieves and returns VPC of IBM cloud.
+author:
+  - Venkatesh Ravula
 options:
   access_key:
     description:
