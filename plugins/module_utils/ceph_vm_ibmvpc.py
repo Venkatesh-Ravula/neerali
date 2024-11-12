@@ -386,7 +386,8 @@ class CephVMNodeIBMVPC:
                 if each_record["type"] == "A":
                     ip_address = each_record["rdata"]["ip"]
                     record = {key: each_record[key] for key in record_attributes}
-                    record["ptr"] = {key: each_record["linked_ptr_record"][key] for key in record_attributes}
+                    if each_record.get("linked_ptr_record"):
+                        record["ptr"] = {key: each_record["linked_ptr_record"][key] for key in record_attributes}
                     records_info[ip_address] = record
             if record_ip:
                 return records_info.get(record_ip)
