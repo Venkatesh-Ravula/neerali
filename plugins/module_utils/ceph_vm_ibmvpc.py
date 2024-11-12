@@ -143,8 +143,7 @@ class CephVMNodeIBMVPC:
             if resource_group_name and not resource_group_id:
                 resource_group_id = self.get_resource_groups(resource_group_name)
 
-            response = self.vpc_service.list_subnets(resource_group_id=resource_group_id, zone_name=zone_name, vpc_name=vpc_name).get_result()
-            subnets = response.get("subnets", [])
+            subnets = self.vpc_service.list_subnets(resource_group_id=resource_group_id, zone_name=zone_name, vpc_name=vpc_name).get_result().get("subnets", [])
             subnets_info = []
             for subnet_item in subnets:
                 subnet_info = {
@@ -173,9 +172,14 @@ class CephVMNodeIBMVPC:
                 resource_group_id = self.get_resource_groups(resource_group_name)
 
             images = self.vpc_service.list_images(resource_group_id=resource_group_id, name=image_name).get_result().get("images", [])
-            images_info = {image["name"]: image["id"] for image in images}
-            if image_name:
-                return images_info.get(image_name)
+            images_info = []
+            for image_item in images:
+                image_info = {
+                    key: image_item[key] for key in ["name", "id", "operating_system"]
+                }
+                images_info.append(image_info)
+            if image_name and len(images_info) == 1:
+                return images_info[0]
             return images_info
         except Exception as e:
             raise Exception(f"Failed to retrieve images: {e}")
@@ -249,7 +253,7 @@ class CephVMNodeIBMVPC:
         except Exception as e:
             raise Exception(f"Failed to retrieve security groups: {e}")
 
-    def get_server_instances(self, resource_group_name=None, resource_group_id=None, vpc_name=None, instance_name=None) -> None:
+    def get_server_instances(self, resource_group_name=None, resource_group_id=None, vpc_name=None, server_name=None) -> None:
         """
         Retrieve the virtual server instances information.
 
@@ -257,7 +261,7 @@ class CephVMNodeIBMVPC:
           resource_group_name: Name of resource group to fetch the server instances associated with it within the region
           resource_group_id: ID of resource group to fetch the server instances associated with it within the region
           vpc_name: Name of VPC
-          instance_name: Name of the server instance
+          server_name: Name of the server instance
 
         :return: List of dictionary of server instances
         """
@@ -265,7 +269,7 @@ class CephVMNodeIBMVPC:
             if resource_group_name and not resource_group_id:
                 resource_group_id = self.get_resource_groups(resource_group_name)
 
-            instances = self.vpc_service.list_instances(resource_group_id=resource_group_id, vpc_name=vpc_name, name=instance_name).get_result().get("instances", [])
+            instances = self.vpc_service.list_instances(resource_group_id=resource_group_id, vpc_name=vpc_name, name=server_name).get_result().get("instances", [])
             instances_info = []
             for vsi in instances:
                 instance_info = {
@@ -280,7 +284,7 @@ class CephVMNodeIBMVPC:
                     instance_info[attribute] = vsi[attribute]["name"]
 
                 instances_info.append(instance_info)
-            if instance_name and len(instances_info) == 1:
+            if server_name and len(instances_info) == 1:
                 return instances_info[0]
             return instances_info
         except Exception as e:
@@ -404,7 +408,7 @@ class CephVMNodeIBMVPC:
         if not instance_id:
             instance_id = self._dns_service_instance_id
         dns_zone_id = self.get_dnszones(instance_id=instance_id, zone_name=zone_name)
-        server_response = self.get_server_instances(instance_name=server_name)
+        server_response = self.get_server_instances(server_name=server_name)
 
         a_record = ResourceRecordInputRdataRdataARecord(server_response["ip_address"])
         self.dnssvc.create_resource_record(
@@ -440,7 +444,7 @@ class CephVMNodeIBMVPC:
         if not instance_id:
             instance_id = self._dns_service_instance_id
         dns_zone_id = self.get_dnszones(instance_id=instance_id, zone_name=zone_name)
-        server_response = self.get_server_instances(instance_name=server_name)
+        server_response = self.get_server_instances(server_name=server_name)
 
         server_record = self.get_resource_records(
             zone_name=zone_name,
@@ -468,7 +472,7 @@ class CephVMNodeIBMVPC:
         if not instance_id:
             instance_id = self._dns_service_instance_id
         dns_zone_id = self.get_dnszones(instance_id=instance_id, zone_name=zone_name)
-        server_response = self.get_server_instances(instance_name=server_name)
+        server_response = self.get_server_instances(server_name=server_name)
 
         server_record = self.get_resource_records(
             zone_name=zone_name,
@@ -476,7 +480,7 @@ class CephVMNodeIBMVPC:
             record_ip=server_response["ip_address"]
         )
         if server_record:
-            if server_record.get("linked_ptr_record"):
+            if server_record.get("ptr"):
                 logger.info(
                     f"Deleting PTR record {server_record['ptr']['name']}"
                 )
@@ -531,6 +535,7 @@ class CephVMNodeIBMVPC:
             user_data:           Cloud init user related data
 
         """
+        server_name = server_name.lower()
         logger.info(f"Starting to create VM with name {server_name}")
         try:
             # Retrieve the object id based on names
@@ -538,7 +543,7 @@ class CephVMNodeIBMVPC:
             subnet = self.get_subnets(network_name=network_name)
             self._subnet = subnet.get("ipv4_cidr_block")
             security_group_id = self.get_security_groups(group_name=security_group)
-            image_id = self.get_images(image_name=image_name)
+            image_id = self.get_images(image_name=image_name).get("id")
             ssh_key_ids = [self.get_sshkeys(key_name=sshkey).get("id") for sshkey in ssh_keys]
             resource_group_id = self.get_resource_groups(resource_group_name=resource_group)
 
@@ -569,7 +574,7 @@ class CephVMNodeIBMVPC:
             for i in range(0, volume_count):
                 volume_attachment_volume_instance_model = dict(
                     {
-                        "name": f"{server_name.lower()}-{str(i)}",
+                        "name": f"{server_name}-{str(i)}",
                         "profile": volume_profile_identity_model,
                         "capacity": volume_size,
                     }
@@ -585,7 +590,7 @@ class CephVMNodeIBMVPC:
             # Prepare the VSI payload
             instance_prototype_model = dict(
                 keys=key_identity_model,
-                name=server_name.lower(),
+                name=server_name,
                 image=image_identity_model,
                 profile=instance_profile_identity_model,
                 resource_group=resource_group_identity_model,
@@ -604,7 +609,7 @@ class CephVMNodeIBMVPC:
             self.update_resource_records(zone_name=dnszone_name, server_name=server_name)
             self.create_resource_records(zone_name=dnszone_name, server_name=server_name)
 
-            return self.get_server_instances(instance_name=server_name.lower())
+            return self.get_server_instances(server_name=server_name)
         except NodeError:
             raise
         except BaseException as be:  # noqa
@@ -625,6 +630,7 @@ class CephVMNodeIBMVPC:
         Raises:
             NodeDeleteFailure
         """
+        server_name = server_name.lower()
         try:
             self.delete_resource_records(zone_name=dnszone_name, server_name=server_name)
         except BaseException:  # noqa
@@ -632,7 +638,7 @@ class CephVMNodeIBMVPC:
             pass
 
         logger.info(f"Preparing to delete VSI: {server_name}")
-        server_id = self.get_server_instances(instance_name=server_name.lower()).get("id")
+        server_id = self.get_server_instances(server_name=server_name).get("id")
         resp = self.vpc_service.delete_instance(id=server_id)
 
         if resp.get_status_code() != 204:
