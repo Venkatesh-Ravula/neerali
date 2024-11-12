@@ -152,7 +152,7 @@
     state: absent
   async: "{{ neerali_ibmc_api_timeout }}"
   poll: 0
-  register: _neerali_ibmc_async_servers
+  register: _neerali_ibmc_async_servers_delete
   loop: "{{ neerali_ibmc_systems_provisioned }}"
   loop_control:
     label: "{{ item.name }}"
@@ -160,13 +160,13 @@
 - name: Wait for all ibmc computes to be deleted
   when:
     - neerali_server_action | default('') == 'delete'
-    - _neerali_ibmc_async_servers is defined
+    - _neerali_ibmc_async_servers_delete is defined
   ansible.builtin.async_status:
     jid: "{{ item.ansible_job_id }}"
   register: _neerali_ibmc_systems
   until: _neerali_ibmc_systems.finished
   retries: "{{ (neerali_ibmc_api_timeout / 10) | int }}"
   delay: 10
-  loop: "{{ _neerali_ibmc_async_servers.results }}"
+  loop: "{{ _neerali_ibmc_async_servers_delete.results }}"
   loop_control:
     label: "{{ item.ansible_job_id }}"
