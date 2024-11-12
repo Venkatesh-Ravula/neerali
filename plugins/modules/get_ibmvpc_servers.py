@@ -100,7 +100,7 @@ def run_module():
 
     # Gather vsi information
     try:
-        servers = vm_node.get_server_instances(resource_group_name=resource_group_name, resource_group_id=resource_group_id, vpc_name=vpc_name, instance_name=name)
+        servers = vm_node.get_server_instances(resource_group_name=resource_group_name, resource_group_id=resource_group_id, vpc_name=vpc_name, server_name=name)
         result = dict(
             changed=False,
             servers=servers

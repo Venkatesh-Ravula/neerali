@@ -192,7 +192,7 @@ def run_module():
         changed = False
         server_instance = None
         if state == 'present':
-            server_instance = vm_node.get_server_instances(instance_name=name)
+            server_instance = vm_node.get_server_instances(server_name=name)
             if not server_instance:
                 changed = True
                 server_instance = vm_node.create_server(
@@ -211,7 +211,7 @@ def run_module():
                     user_data=user_data
                 )
         elif state == 'absent':
-            if vm_node.get_server_instances(instance_name=name):
+            if vm_node.get_server_instances(server_name=name):
                 changed = True
                 server_instance = vm_node.delete_server(
                     server_name=name,
