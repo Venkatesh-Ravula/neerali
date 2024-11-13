@@ -54,13 +54,19 @@
   ansible.builtin.set_fact:
     _neerali_ibmc_server_prefix: "{{ range(1000,9999) | random }}"
 
+- name: Reset instance names list for each server
+  when:
+    - neerali_server_action | default('') == 'create'
+  ansible.builtin.set_fact:
+    _neerali_ibmc_server_names: []
+
 - name: "Create instance names for server {{ neerali_server_config.name }}"
   when:
     - neerali_server_action | default('') == 'create'
   ansible.builtin.set_fact:
     _neerali_ibmc_server_names: >-
       {{
-        _neerali_ibmc_server_names | default([]) +
+        _neerali_ibmc_server_names +
         [
           (
             '%s-%s-%s-%02d'|format(
