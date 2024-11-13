@@ -1,0 +1,40 @@
+---
+neerali_repo_setup_repos:
+  - name: ceph-tools
+    baseurl: http://download-01.beak-001.prod.iad2.dc.redhat.com/rhel-9/composes/auto/ceph-8.0-rhel-9/RHCEPH-8.0-RHEL-9-20241002.ci.0/compose/Tools/x86_64/os/
+    description: ceph-tools repo
+    enabled: true
+    gpgcheck: false
+
+  - name: rhel-appstream
+    baseurl: http://download.hosts.prod.upshift.rdu2.redhat.com/released/RHEL-9/9.4.0-Update-0/AppStream/x86_64/os/
+    description: rhel-94-appstream
+    enabled: true
+    gpgcheck: false
+
+  - name: rhel-baseos
+    baseurl: http://download.hosts.prod.upshift.rdu2.redhat.com/released/RHEL-9/9.4.0-Update-0/BaseOS/x86_64/os/
+    description: rhel-94-baseos
+    enabled: true
+    gpgcheck: false
+
+  - name: rhel-crb
+    baseurl: http://download.hosts.prod.upshift.rdu2.redhat.com/released/RHEL-9/9.4.0-Update-0/CRB/x86_64/os/
+    description: rhel-94-crb
+    enabled: true
+    gpgcheck: false
+
+neerali_repo_setup_remove_repo_files: true
+neerali_repo_setup_os_update: true
+
+neerali_prepare_sys_packages_extra:
+  - cephadm
+
+# system configs
+neerali_prepare_sys_ulimit: true
+
+# docker creds
+neerali_prepare_sys_dtrs:
+  - username: qa@redhat.com
+    password: MTQj5t3n5K86p3gH
+    registry: registry.redhat.io

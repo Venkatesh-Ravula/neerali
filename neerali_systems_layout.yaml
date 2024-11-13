@@ -1,0 +1,135 @@
+neerali_systems_layout:
+  vms:
+    - name: neerali-rhos-node
+      type: ceph
+      cluster: ceph
+      driver: openstack
+      count: 1
+      image: RHEL-9.4.0-x86_64-ga-latest
+      flavor: ci.standard.medium
+      roles:
+        - _admin
+        - mgr
+        - mon
+      volumes:
+        size: 15
+      networks:
+        - provider_net_cci_11
+      cloud_init: |
+        #cloud-config
+        ssh_pwauth: true
+        disable_root: false
+
+        groups:
+          - cephuser
+
+        users:
+          - name: cephuser
+            primary_group: cephuser
+            sudo: ALL=(ALL) NOPASSWD:ALL
+            shell: /bin/bash
+            ssh_authorized_keys:
+              - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDq5TDCTnfr5ogch0GrpbukGNplGkd9iiFPYh91xJ5fhoC9aKUIIHCREZNGmO/ESoZAIJlyoqx/j7Nj80CcCsDTZTHs7q7b2224Ki+9IubTaTQWGyYy85KHthPkXkyoatOkkJFmcKTTYEp2/EhKMS04tPmjR8m3nh6M6g2eKnIEjUMZ5+NxJmIKDlZJw3M0+4kp47oXNgaZQ9AhVuRuu0aWPambiWW5tp3gSnT2fE9le5KgbSurCq+PPLkfyzqSHrjavcCsnp8apmUYS2v/GksqXwpVO3335QMou8eK4jRQhc4g6n9uhH4/yyjMbiYEU4L3rLc0ljlXXsg63L/jrwimHJgo19yKUEehjI3c4wdXwoGUlV/1Ewa2/IULEAiOGq80p107Xn1Krd8k5EmKWZdIu3KyDe3rriI9b/YvHJRm4i4IVqPs8Eqm3zOlD2I9PsfzI3aKv18iskbkFZKgKwu0tRSbmuGfBUcm/A9zfa07DTxksSgT8KRyLziudjxU3Yy1ihXBW40RaGSbGrDSkYLBrWUDxvG5Jid3v1UO8D7Lxik1z0ZKan7kYD5lCBjtAFKxKNlPAKCzlKAI4otbG3yMRd9BZFGVQGuRkbhE2kz5nvjmY10DFz5iJM8y/aSeesAXVuNjFMb8KsuilcRopiGqdweQS9R/yvNpD2DtimlvCw== venkateshravula@corpha2-int.rdu.redhat.com
+              - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDPHFNcyrHISbDksvZcICQFpVXOjYgSHuDIjMYHzaFh+2wOZxLE6NmHwhTJDEqW1WogzdfqFa39c6b4Mhm3JFDu8fbHs/2uccVdZrAEAdXBi++SMBzDTkBjp+6RTW8xHBKBBm/xbtCS2KuSMYWCzmT1bk87ZzzOY/4ov8UAOm6g5eouR1qpohCaRVmoVVankb4FAi8VGT1McQm6eiecebKNzMUP08eidKyCfpKgObSiEFTp7grAyv8BVNNsJTgLOtwoyfJbEbZridxgEqrDhF21WpqloeiyG4YPWN3TeDYtqaedtIjcfiOizy9HmsSu8miusfvMEjFgR9G2xbpudOyv jenkins-build@ci-slave.localdomain
+
+        chpasswd:
+          list: |
+            root:passwd
+            cephuser:pass123
+          expire: false
+
+        runcmd:
+          - sed -i -e 's/^Defaults\s\+requiretty/# \0/' /etc/sudoers
+          - subscription-manager clean
+          - hostnamectl set-hostname $(hostname -s)
+          - sed -i -e 's/#PermitRootLogin .*/PermitRootLogin yes/' /etc/ssh/sshd_config
+          - sed -i -e 's/#PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          - systemctl restart sshd
+          - curl -m 120 -o /etc/pki/ca-trust/source/anchors/ceph-qe-ca.pem http://magna002.ceph.redhat.com/cephci-jenkins/.cephqe-ca.pem
+          - curl -m 120 -k -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt https://certs.corp.redhat.com/certs/2015-IT-Root-CA.pem
+          - update-ca-trust
+          - yum-config-manager --add-repo http://magna002.ceph.redhat.com/cephci-jenkins/repos/9/lab-extras.repo
+          - yum clean metadata
+          - yum clean all
+          - touch /ceph-qa-ready
+
+        final_message: "Ready for ceph qa testing"
+
+    - name: neerali-ibmc-node
+      type: ceph
+      cluster: ceph
+      driver: ibmc
+      count: 2
+      image: ibm-redhat-9-4-minimal-amd64-1
+      flavor: bx2-2x8
+      ssh_keys:
+        - venkat-public-key
+        - ceph-qe-jenkins
+      vpc: ceph-qe-vpc
+      security_group: flick-outgoing-rejoicing-broadways
+      zone: us-south-2
+      dns_zone: dall.qe.ceph.local
+      resource_group: Ceph-qe
+      roles:
+        - mon
+        - osd
+      volumes:
+        count: 2
+        size: 20
+      networks:
+        - sn-20240306-02
+      cloud_init: |
+        #cloud-config
+        ssh_pwauth: true
+        disable_root: false
+
+        groups:
+          - cephuser
+
+        users:
+          - name: cephuser
+            primary-group: cephuser
+            sudo: ALL=(ALL) NOPASSWD:ALL
+            shell: /bin/bash
+            ssh-authorized-keys:
+              - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDq5TDCTnfr5ogch0GrpbukGNplGkd9iiFPYh91xJ5fhoC9aKUIIHCREZNGmO/ESoZAIJlyoqx/j7Nj80CcCsDTZTHs7q7b2224Ki+9IubTaTQWGyYy85KHthPkXkyoatOkkJFmcKTTYEp2/EhKMS04tPmjR8m3nh6M6g2eKnIEjUMZ5+NxJmIKDlZJw3M0+4kp47oXNgaZQ9AhVuRuu0aWPambiWW5tp3gSnT2fE9le5KgbSurCq+PPLkfyzqSHrjavcCsnp8apmUYS2v/GksqXwpVO3335QMou8eK4jRQhc4g6n9uhH4/yyjMbiYEU4L3rLc0ljlXXsg63L/jrwimHJgo19yKUEehjI3c4wdXwoGUlV/1Ewa2/IULEAiOGq80p107Xn1Krd8k5EmKWZdIu3KyDe3rriI9b/YvHJRm4i4IVqPs8Eqm3zOlD2I9PsfzI3aKv18iskbkFZKgKwu0tRSbmuGfBUcm/A9zfa07DTxksSgT8KRyLziudjxU3Yy1ihXBW40RaGSbGrDSkYLBrWUDxvG5Jid3v1UO8D7Lxik1z0ZKan7kYD5lCBjtAFKxKNlPAKCzlKAI4otbG3yMRd9BZFGVQGuRkbhE2kz5nvjmY10DFz5iJM8y/aSeesAXVuNjFMb8KsuilcRopiGqdweQS9R/yvNpD2DtimlvCw== venkateshravula@corpha2-int.rdu.redhat.com
+
+        chpasswd:
+          users:
+            - name: cephuser
+              password: pass123
+            - name: root
+              password: passwd
+          expire: false
+
+        runcmd:
+          - sed -i -e 's/^Defaults\s\+requiretty/# \0/' /etc/sudoers
+          - subscription-manager clean
+          - hostnamectl set-hostname $(hostname -s)
+          - sed -i -e 's/#PermitRootLogin .*/PermitRootLogin yes/' /etc/ssh/sshd_config
+          - sed -i -e 's/#PasswordAuthentication .*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+          - systemctl restart sshd
+          - curl -m 120 -o /etc/pki/ca-trust/source/anchors/ceph-qe-ca.pem http://magna002.ceph.redhat.com/cephci-jenkins/.cephqe-ca.pem
+          - curl -m 120 -k -o /etc/pki/ca-trust/source/anchors/RH-IT-Root-CA.crt https://certs.corp.redhat.com/certs/2015-IT-Root-CA.pem
+          - update-ca-trust
+          - yum-config-manager --add-repo http://magna002.ceph.redhat.com/cephci-jenkins/repos/9/lab-extras.repo
+          - yum clean metadata
+          - yum clean all
+          - echo "net.core.default_qdisc=netem" > /etc/sysctl.d/1000-qdisc.conf
+          - timedatectl set-timezone Etc/UTC
+          - touch /ceph-qa-ready
+
+        final_message: "Ready for ceph qa testing"
+
+  networks:
+    public:
+      name: public-net
+      driver: openstack
+    data:
+      name: private-net
+      cidr: x.x.x.x/y
+      domain: testdomain.com
+      driver: openstack
+
+neerali_use_openstack: false
+neerali_use_ibmc: true

@@ -1,0 +1,12 @@
+---
+neerali_ceph_config:
+  ceph:
+    cephadm:
+      image: registry-proxy.engineering.redhat.com/rh-osbs/rhceph:ceph-8.0-rhel-9-containers-candidate-31349-20241007231724
+
+    bootstrap:
+      skip-monitoring-stack: true
+      skip-dashboard: true
+
+    osd:
+      options: "--all-available-devices"

@@ -1,0 +1,4 @@
+neerali_ibmc_auth:
+  service_url: https://us-south.iaas.cloud.ibm.com/v1
+  dns_service_url: https://api.dns-svcs.cloud.ibm.com/v1
+  access_key: n2nCHGCl5gElhuFPy6C4WrQYKHupuNu4G43tmgPO4eiP
